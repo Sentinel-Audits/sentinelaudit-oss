@@ -6,6 +6,20 @@ and the broader EVM ecosystem.
 This repository is the selective open-source surface of the project: reusable
 triage, analysis, and validation tooling that sits underneath the product.
 
+## Getting Started
+
+Core public surfaces:
+
+- LLM triage harnesses
+- Slither runner helper modules
+- release and evaluation docs
+
+Start here:
+
+- [OSS_MODULES.md](D:/projects/audit/apps/OSS_MODULES.md)
+- [CONTRIBUTING.md](D:/projects/audit/apps/CONTRIBUTING.md)
+- [CODE_OF_CONDUCT.md](D:/projects/audit/apps/CODE_OF_CONDUCT.md)
+
 It is not just "run Slither and summarize it." The system is designed to:
 
 - assemble a compilable workspace from selected repo files
@@ -47,6 +61,7 @@ See:
 - [PUBLIC_RELEASE_CHECKLIST.md](D:/projects/audit/apps/PUBLIC_RELEASE_CHECKLIST.md)
 - [PUBLIC_REPO_SETUP.md](D:/projects/audit/apps/PUBLIC_REPO_SETUP.md)
 - [CONTRIBUTING.md](D:/projects/audit/apps/CONTRIBUTING.md)
+- [CODE_OF_CONDUCT.md](D:/projects/audit/apps/CODE_OF_CONDUCT.md)
 - [SECURITY.md](D:/projects/audit/apps/SECURITY.md)
 - [LICENSE](D:/projects/audit/apps/LICENSE)
 
