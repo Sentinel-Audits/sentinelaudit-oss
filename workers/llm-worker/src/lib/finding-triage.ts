@@ -1,4 +1,8 @@
 import type { SemanticFacts } from "../types/vulnerability";
+import {
+	hasAccountingDimensionalContext,
+	shouldRunDimensionalAnalysis,
+} from "./dimensional-analysis";
 
 export type FindingTriageVerdict =
 	| "untriaged"
@@ -187,6 +191,58 @@ function hasAccountingLinkedValueSource(facts?: SemanticFacts): boolean {
 			value,
 		),
 	);
+}
+
+function getDimensionalMismatchKinds(facts?: SemanticFacts): string[] {
+	return Array.isArray(facts?.dimensionalFacts?.mismatches)
+		? facts.dimensionalFacts.mismatches.map((mismatch) => String(mismatch.kind || ""))
+		: [];
+}
+
+function hasDimensionalMismatch(
+	facts: SemanticFacts | undefined,
+	...kinds: string[]
+): boolean {
+	const mismatchKinds = getDimensionalMismatchKinds(facts);
+	return kinds.some((kind) => mismatchKinds.includes(kind));
+}
+
+function hasHighSignalDimensionalMismatch(facts?: SemanticFacts): boolean {
+	return hasDimensionalMismatch(
+		facts,
+		"share_asset_confusion",
+		"price_amount_confusion",
+		"scale_mismatch",
+	);
+}
+
+function getDimensionalConfidenceBoost(
+	detectorId: string,
+	facts?: SemanticFacts,
+): number {
+	if (!facts) return 0;
+
+	if (
+		(detectorId === "divide-before-multiply" || detectorId === "incorrect-exp") &&
+		hasHighSignalDimensionalMismatch(facts)
+	) {
+		return 12;
+	}
+
+	if (
+		(detectorId === "low-level-calls" ||
+			detectorId === "unchecked-lowlevel" ||
+			detectorId === "unchecked-transfer") &&
+		hasHighSignalDimensionalMismatch(facts)
+	) {
+		return 6;
+	}
+
+	if (hasAccountingDimensionalContext(facts)) {
+		return 4;
+	}
+
+	return 0;
 }
 
 function isBridgeOrMapperAdminFlow(facts?: SemanticFacts): boolean {
@@ -504,6 +560,21 @@ function buildDeterministicRationale(
 	if (hasAccountingLinkedValueSource(facts)) {
 		parts.push("The moved value appears tied to balance or accounting-derived state.");
 	}
+	if (hasAccountingDimensionalContext(facts)) {
+		parts.push(
+			"The extracted path shows accounting or unit-sensitive signals where dimensional mistakes could matter.",
+		);
+	}
+	if (
+		Array.isArray(facts?.dimensionalFacts?.mismatches) &&
+		facts.dimensionalFacts.mismatches.length > 0
+	) {
+		parts.push(
+			`Potential unit mismatch observed: ${facts.dimensionalFacts.mismatches
+				.map((mismatch) => mismatch.kind)
+				.join(", ")}.`,
+		);
+	}
 	if (detectorId === "unprotected-upgrade" && facts?.auth.includes("upgrade_authorized")) {
 		parts.push("Upgrade authorization is explicitly present in the extracted function context.");
 	}
@@ -534,8 +605,12 @@ function enrichTriageRecord(
 		Array.isArray(triage.assumptions) && triage.assumptions.length > 0
 			? triage.assumptions
 			: buildAssumptions(detectorId, facts);
+	const confidenceBoost = getDimensionalConfidenceBoost(detectorId, facts);
 	return {
 		...triage,
+		confidence: clampTriageConfidence(
+			Number(triage.confidence || 0) + confidenceBoost,
+		),
 		rationale:
 			String(triage.rationale || "").trim() ||
 			buildDeterministicRationale(detectorId, facts),
@@ -759,8 +834,24 @@ function applyDetectorFactPolicy(
 	}
 
 	if (detectorId === "divide-before-multiply" || detectorId === "incorrect-exp") {
+		if (!shouldRunDimensionalAnalysis(finding)) {
+			return { state: "triaged_likely_benign", reportBucket: "research_note" };
+		}
 		if (hasTrustedBoundary(facts) || !hasPublicReachability(facts)) {
 			return { state: "triaged_likely_benign", reportBucket: "research_note" };
+		}
+		const hasHighSignalMismatch = hasHighSignalDimensionalMismatch(facts);
+		const economicallySensitive =
+			hasEconomicallySensitiveState(facts) ||
+			hasAccountingLinkedValueSource(facts) ||
+			hasAccountingDimensionalContext(facts);
+		if (
+			hasArithmeticControlledArgs(facts) &&
+			hasHighSignalMismatch &&
+			economicallySensitive &&
+			isStrongValidatedState(state)
+		) {
+			return { state, reportBucket: "report_finding" };
 		}
 		if (hasArithmeticControlledArgs(facts)) {
 			return {

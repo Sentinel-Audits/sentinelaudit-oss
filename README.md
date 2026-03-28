@@ -16,6 +16,7 @@ Core public surfaces:
 
 - LLM triage harnesses
 - Slither runner helper modules
+- benchmark corpus and scorecard scripts
 - release and evaluation docs
 
 Start here:
@@ -42,6 +43,7 @@ This repo is meant to expose reusable security workflow building blocks:
 
 - structured triage harnesses
 - repo-aware compile and scan helpers
+- public benchmark corpus and scorecard generation
 - validation runner patterns
 - release and evaluation methodology
 
@@ -101,7 +103,8 @@ flowchart TD
     C --> D["Slither detectors"]
     D --> E["Normalized findings"]
     E --> F["Semantic fact extraction"]
-    F --> G["Structured report objects"]
+    F --> F2["Dimensional fact extraction<br/>selected accounting paths"]
+    F2 --> G["Structured report objects"]
     G --> H["Promotion policy"]
     H --> I["Report findings"]
     H --> J["Needs review"]
@@ -141,9 +144,16 @@ The core questions Sentinel tries to answer automatically are:
 - who controls the dangerous argument
 - whether state is finalized before external interaction
 - whether the affected code is first-party or dependency code
+- whether arithmetic/accounting logic mixes units like assets, shares, prices,
+  or fee scales in a suspicious way
 
 If those answers are weak or incomplete, Sentinel should hold the finding back
 instead of pretending to have higher confidence than it does.
+
+For accounting-sensitive findings, Sentinel also uses a narrow dimensional
+reasoning layer. This is not a blanket pass over every detector; it is applied
+only on selected monetary paths where unit confusion can materially affect
+exploitability and promotion confidence.
 
 ## Services
 
