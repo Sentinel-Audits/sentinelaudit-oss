@@ -29,6 +29,7 @@ See:
 - [PUBLIC_RELEASE_BOUNDARY.md](D:/projects/audit/apps/docs/PUBLIC_RELEASE_BOUNDARY.md)
 - [OSS_MODULES.md](D:/projects/audit/apps/OSS_MODULES.md)
 - [PUBLIC_RELEASE_CHECKLIST.md](D:/projects/audit/apps/PUBLIC_RELEASE_CHECKLIST.md)
+- [PUBLIC_REPO_SETUP.md](D:/projects/audit/apps/PUBLIC_REPO_SETUP.md)
 - [CONTRIBUTING.md](D:/projects/audit/apps/CONTRIBUTING.md)
 - [SECURITY.md](D:/projects/audit/apps/SECURITY.md)
 
