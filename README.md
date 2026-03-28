@@ -1,6 +1,10 @@
 # Sentinel Audit
 
-Sentinel Audit is a productized smart-contract audit workflow.
+SentinelAudit is an AI-assisted smart contract security workflow for Ethereum
+and the broader EVM ecosystem.
+
+This repository is the selective open-source surface of the project: reusable
+triage, analysis, and validation tooling that sits underneath the product.
 
 It is not just "run Slither and summarize it." The system is designed to:
 
@@ -13,6 +17,18 @@ It is not just "run Slither and summarize it." The system is designed to:
 - support validation workflows instead of stopping at scanner output
 
 The current product direction is captured in [ROADMAP.md](D:/projects/audit/apps/ROADMAP.md).
+
+## Open-Source Scope
+
+This repo is meant to expose reusable security workflow building blocks:
+
+- structured triage harnesses
+- repo-aware compile and scan helpers
+- validation runner patterns
+- release and evaluation methodology
+
+Private product layers such as billing, auth, customer history, and internal
+audit-intelligence operations are intentionally kept out of the public surface.
 
 ## Public Structure
 
@@ -32,6 +48,7 @@ See:
 - [PUBLIC_REPO_SETUP.md](D:/projects/audit/apps/PUBLIC_REPO_SETUP.md)
 - [CONTRIBUTING.md](D:/projects/audit/apps/CONTRIBUTING.md)
 - [SECURITY.md](D:/projects/audit/apps/SECURITY.md)
+- [LICENSE](D:/projects/audit/apps/LICENSE)
 
 Before publishing any slice of the repo, run:
 
