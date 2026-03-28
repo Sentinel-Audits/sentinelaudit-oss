@@ -1,0 +1,8 @@
+SentinelAudit OSS Surface
+
+This repository contains selected open-source components of SentinelAudit,
+including reusable triage, analysis, and validation tooling.
+
+Copyright (c) SentinelAudit
+
+Licensed under the Apache License, Version 2.0.

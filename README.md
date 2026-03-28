@@ -1,5 +1,9 @@
 # Sentinel Audit
 
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](D:/projects/audit/apps/LICENSE)
+[![Scope: Selective OSS](https://img.shields.io/badge/scope-selective%20oss-111827.svg)](D:/projects/audit/apps/OSS_MODULES.md)
+[![Security Workflow](https://img.shields.io/badge/focus-smart%20contract%20security-0f766e.svg)](D:/projects/audit/apps/OSS_MODULES.md)
+
 SentinelAudit is an AI-assisted smart contract security workflow for Ethereum
 and the broader EVM ecosystem.
 
@@ -64,6 +68,7 @@ See:
 - [CODE_OF_CONDUCT.md](D:/projects/audit/apps/CODE_OF_CONDUCT.md)
 - [SECURITY.md](D:/projects/audit/apps/SECURITY.md)
 - [LICENSE](D:/projects/audit/apps/LICENSE)
+- [NOTICE](D:/projects/audit/apps/NOTICE)
 
 Before publishing any slice of the repo, run:
 
