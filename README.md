@@ -83,7 +83,7 @@ bun run audit:public-surface
 ```mermaid
 flowchart LR
     U["User"] --> W["web<br/>Next.js UI"]
-    W --> B["backend<br/>Cloudflare Worker + Hono"]
+    W --> B["backend<br/>Hono on Bun (Railway)"]
     B --> S["slither runner<br/>compile + scan"]
     B --> L["llm-worker<br/>structuring + fixes + dossiers"]
     B --> E["echidna runner<br/>optional fuzzing"]
@@ -215,7 +215,7 @@ This currently verifies:
 - local report structuring happens after a job reaches `READY`, not when the report page refreshes
 - local backend should use `LLM_WORKER_URL=http://127.0.0.1:8788`
 - backend and `llm-worker` must share the same `LLM_WORKER_TOKEN`
-- local backend sends inline findings to the local worker because Wrangler's simulated local R2 is not shared across services
+- local backend sends inline findings to the local worker because the local MinIO/S3 object store is not shared across services
 - `backend/.dev.vars` should point `SLITHER_RUNNER_URL` at `http://localhost:8080`
 
 ## What AI Is Responsible For
