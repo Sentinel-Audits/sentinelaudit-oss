@@ -372,7 +372,8 @@ def install_dependencies(packages: Dict[str, str], cwd: str, logger=None) -> boo
 
     cmd = ["bun", "add", "--no-save", "--no-cache", "--ignore-scripts"] + install_args
     try:
-        process = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=900)
+        # 5 min cap. A hung install blocks the entire worker; better to fail fast.
+        process = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=300)
         if process.returncode != 0:
             if logger:
                 logger.error(f"bun install failed: {process.stderr}")
@@ -399,7 +400,8 @@ def install_from_package_json(
         cmd = ["bun", "install", "--ignore-scripts"]
         if not include_dev_dependencies:
             cmd.append("--production")
-        process = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=900)
+        # 5 min cap. A hung install blocks the entire worker; better to fail fast.
+        process = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=300)
         if process.returncode != 0:
             if logger:
                 logger.error(f"bun install failed: {process.stderr}")
@@ -411,6 +413,83 @@ def install_from_package_json(
         if logger:
             logger.error("bun install timed out")
         return False
+
+
+def _read_installed_package_metadata(cwd: str, package_name: str) -> dict:
+    package_root = os.path.join(cwd, "node_modules", *package_name.split("/"))
+    package_json_path = os.path.join(package_root, "package.json")
+    if not os.path.exists(package_json_path):
+        return {}
+
+    try:
+        with open(package_json_path, "r", encoding="utf-8", errors="ignore") as handle:
+            return json.load(handle)
+    except Exception:
+        return {}
+
+
+def install_required_peer_dependencies(
+    cwd: str,
+    package_names: List[str],
+    logger=None,
+) -> Dict[str, str]:
+    installed_peers: Dict[str, str] = {}
+    frontier: List[str] = []
+    for package_name in package_names:
+        if package_name.startswith("@"):
+            last_at = package_name.rfind("@")
+            frontier.append(package_name[:last_at] if last_at > 0 else package_name)
+        else:
+            frontier.append(package_name.split("@", 1)[0])
+
+    seen: Set[str] = set()
+
+    while frontier:
+        current_package = frontier.pop(0).strip()
+        if not current_package or current_package in seen:
+            continue
+        seen.add(current_package)
+
+        metadata = _read_installed_package_metadata(cwd, current_package)
+        peer_dependencies = metadata.get("peerDependencies") or {}
+        peer_meta = metadata.get("peerDependenciesMeta") or {}
+
+        missing_peers: Dict[str, str] = {}
+        for peer_name, version_spec in peer_dependencies.items():
+            optional = bool((peer_meta.get(peer_name) or {}).get("optional"))
+            if optional:
+                continue
+
+            package_root = os.path.join(cwd, "node_modules", *peer_name.split("/"))
+            if os.path.exists(package_root):
+                frontier.append(peer_name)
+                continue
+
+            version = str(version_spec or "").strip() or "latest"
+            missing_peers[peer_name] = version
+
+        if not missing_peers:
+            continue
+
+        if logger:
+            logger.info(
+                "Installing required peer dependencies for %s: %s",
+                current_package,
+                sorted(missing_peers.keys()),
+            )
+
+        if not install_dependencies(missing_peers, cwd, logger):
+            if logger:
+                logger.warning(
+                    "Failed to install required peer dependencies for %s",
+                    current_package,
+                )
+            continue
+
+        installed_peers.update(missing_peers)
+        frontier.extend(missing_peers.keys())
+
+    return installed_peers
 
 
 def build_remappings(td: str, packages: List[str]) -> str:

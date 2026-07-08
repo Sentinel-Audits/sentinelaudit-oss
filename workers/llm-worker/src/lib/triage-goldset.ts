@@ -1,4 +1,4 @@
-import type { FindingTriageVerdict } from "./finding-triage";
+import type { FindingTriageVerdict, InvariantKind } from "./finding-triage";
 
 export interface GoldSetFindingCase {
 	id: string;
@@ -9,6 +9,7 @@ export interface GoldSetFindingCase {
 	description: string;
 	snippet: string;
 	expectedVerdict: FindingTriageVerdict;
+	expectedInvariantKinds?: InvariantKind[];
 	why: string;
 	tags: string[];
 }
@@ -51,6 +52,7 @@ export const TRIAGE_GOLDSET_SEED: GoldSetFindingCase[] = [
 			"}",
 		].join("\n"),
 		expectedVerdict: "likely_real",
+		expectedInvariantKinds: ["state_finalized_before_payout"],
 		why: "Implementation snippet supports a concrete exploit path where caller-controlled payout happens before critical state finalization.",
 		tags: ["funds-loss", "effects-after-interaction"],
 	},
@@ -105,8 +107,27 @@ export const TRIAGE_GOLDSET_SEED: GoldSetFindingCase[] = [
 			"}",
 		].join("\n"),
 		expectedVerdict: "needs_human_review",
+		expectedInvariantKinds: ["upgrade_requires_explicit_authorization"],
 		why: "The snippet is risky and likely missing auth, but exploitability still depends on inherited guards or surrounding proxy wiring not shown here.",
 		tags: ["upgradeability", "context-dependent"],
+	},
+	{
+		id: "share-asset-conversion-invariant",
+		title: "Share conversion uses mixed asset and supply units",
+		detector: "divide-before-multiply",
+		severity: "medium",
+		file: "contracts/VaultMath.sol",
+		description:
+			"VaultMath.convertToShares() divides assets by totalSupply before price normalization.",
+		snippet: [
+			"function convertToShares(uint256 assets) external view returns (uint256) {",
+			"    return assets / totalSupply * assetPrice;",
+			"}",
+		].join("\n"),
+		expectedVerdict: "needs_human_review",
+		expectedInvariantKinds: ["share_asset_conversion_consistency"],
+		why: "The arithmetic path should surface the share and asset consistency invariant even if exploit impact still needs validation.",
+		tags: ["accounting", "precision", "invariant-share-asset"],
 	},
 	{
 		id: "dead-code-benign",

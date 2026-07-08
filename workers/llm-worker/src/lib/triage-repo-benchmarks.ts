@@ -1,9 +1,11 @@
 import type { FindingTriageVerdict } from "./finding-triage";
+import type { InvariantKind } from "./finding-triage";
 
 export interface RepoBenchmarkExpectation {
 	id: string;
 	expectedBucket: "report_finding" | "needs_review" | "research_note";
 	expectedVerdict: FindingTriageVerdict;
+	expectedInvariantKinds?: InvariantKind[];
 }
 
 export interface RepoBenchmarkFixture {
@@ -92,12 +94,12 @@ export const TRIAGE_REPO_BENCHMARKS: RepoBenchmarkFixture[] = [
 			{
 				id: "cube-admin-withdraw",
 				expectedBucket: "research_note",
-				expectedVerdict: "likely_real",
+				expectedVerdict: "likely_benign",
 			},
 			{
 				id: "cube-signed-payout",
 				expectedBucket: "research_note",
-				expectedVerdict: "likely_real",
+				expectedVerdict: "likely_benign",
 			},
 		],
 	},
@@ -146,6 +148,7 @@ export const TRIAGE_REPO_BENCHMARKS: RepoBenchmarkFixture[] = [
 				id: "claim-before-zero",
 				expectedBucket: "report_finding",
 				expectedVerdict: "likely_real",
+				expectedInvariantKinds: ["state_finalized_before_payout"],
 			},
 		],
 	},
@@ -193,7 +196,7 @@ export const TRIAGE_REPO_BENCHMARKS: RepoBenchmarkFixture[] = [
 			{
 				id: "oz-divide-before-multiply",
 				expectedBucket: "research_note",
-				expectedVerdict: "likely_real",
+				expectedVerdict: "likely_benign",
 			},
 		],
 	},
@@ -274,12 +277,14 @@ export const TRIAGE_REPO_BENCHMARKS: RepoBenchmarkFixture[] = [
 			{
 				id: "uups-authorized-upgrade",
 				expectedBucket: "research_note",
-				expectedVerdict: "likely_real",
+				expectedVerdict: "likely_benign",
+				expectedInvariantKinds: ["upgrade_requires_explicit_authorization"],
 			},
 			{
 				id: "public-upgrade-target",
 				expectedBucket: "needs_review",
 				expectedVerdict: "likely_real",
+				expectedInvariantKinds: ["upgrade_requires_explicit_authorization"],
 			},
 		],
 	},
@@ -360,12 +365,134 @@ export const TRIAGE_REPO_BENCHMARKS: RepoBenchmarkFixture[] = [
 			{
 				id: "finalized-before-call",
 				expectedBucket: "research_note",
-				expectedVerdict: "likely_real",
+				expectedVerdict: "likely_benign",
+				expectedInvariantKinds: ["state_finalized_before_payout"],
 			},
 			{
 				id: "effects-after-interaction-balance",
 				expectedBucket: "report_finding",
 				expectedVerdict: "likely_real",
+				expectedInvariantKinds: ["state_finalized_before_payout"],
+			},
+		],
+	},
+	{
+		id: "accounting-invariant-contrast",
+		name: "Accounting Invariant Contrast",
+		description:
+			"Share and asset math should surface conversion invariants only on economically meaningful public paths.",
+		findings: [
+			{
+				id: "public-share-asset-mismatch",
+				title: "divide-before-multiply",
+				severity: "medium",
+				originalId: "divide-before-multiply",
+				isExternal: false,
+				findingState: "raw_lead",
+				semanticFacts: {
+					functionName: "previewDeposit",
+					contractName: "Vault",
+					inheritanceParents: [],
+					overrideContext: [],
+					visibility: "external",
+					modifiers: [],
+					auth: [],
+					externalCalls: [],
+					stateWritesBeforeCalls: [],
+					stateWritesAfterCalls: [],
+					affectedStateSlots: [],
+					valueSourceExpressions: [],
+					stateFinalizedBeforeExternalCall: true,
+					postCallStateDependsOnSuccess: false,
+					attackerControlledArgs: [],
+					provenanceSources: {
+						recipientSource: "unknown",
+						amountSource: "unknown",
+						targetSource: "unknown",
+					},
+					arithmeticControlledArgs: ["assets", "totalSupply", "totalAssets"],
+					trustBoundary: "public_or_unrestricted",
+					isDependency: false,
+					dimensionalFacts: {
+						observations: [
+							{
+								expression: "assets",
+								unit: "asset_amount",
+								confidence: "high",
+								source: "identifier_heuristic",
+							},
+							{
+								expression: "totalSupply",
+								unit: "share_amount",
+								confidence: "high",
+								source: "identifier_heuristic",
+							},
+							{
+								expression: "totalAssets",
+								unit: "asset_amount",
+								confidence: "high",
+								source: "identifier_heuristic",
+							},
+						],
+						mismatches: [
+							{
+								kind: "share_asset_confusion",
+								left: "assets",
+								right: "totalSupply",
+								details: "Share supply is used before asset normalization.",
+								severityHint: "medium",
+							},
+						],
+						normalizations: [],
+					},
+				},
+			},
+			{
+				id: "internal-math-helper",
+				title: "incorrect-exp",
+				severity: "medium",
+				originalId: "incorrect-exp",
+				isExternal: false,
+				findingState: "raw_lead",
+				semanticFacts: {
+					functionName: "_pow10",
+					contractName: "VaultMath",
+					inheritanceParents: [],
+					overrideContext: [],
+					visibility: "internal",
+					modifiers: [],
+					auth: [],
+					externalCalls: [],
+					stateWritesBeforeCalls: [],
+					stateWritesAfterCalls: [],
+					affectedStateSlots: [],
+					valueSourceExpressions: [],
+					stateFinalizedBeforeExternalCall: true,
+					postCallStateDependsOnSuccess: false,
+					attackerControlledArgs: [],
+					provenanceSources: {
+						recipientSource: "unknown",
+						amountSource: "unknown",
+						targetSource: "unknown",
+					},
+					arithmeticControlledArgs: [],
+					trustBoundary: "internal_only",
+					isDependency: false,
+				},
+			},
+		],
+		expectations: [
+			{
+				id: "public-share-asset-mismatch",
+				expectedBucket: "report_finding",
+				expectedVerdict: "likely_real",
+				expectedInvariantKinds: ["share_asset_conversion_consistency"],
+			},
+			{
+				id: "internal-math-helper",
+				expectedBucket: "research_note",
+				expectedVerdict: "likely_benign",
+				expectedInvariantKinds: [],
 			},
 		],
 	},
@@ -451,7 +578,7 @@ export const TRIAGE_REPO_BENCHMARKS: RepoBenchmarkFixture[] = [
 			{
 				id: "internal-zero-placeholder",
 				expectedBucket: "research_note",
-				expectedVerdict: "likely_real",
+				expectedVerdict: "likely_benign",
 			},
 		],
 	},

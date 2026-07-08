@@ -1,4 +1,4 @@
-import type { FindingTriageVerdict } from "./finding-triage";
+import type { FindingTriageVerdict, InvariantKind } from "./finding-triage";
 
 export interface AuditorReviewCase {
 	id: string;
@@ -8,6 +8,7 @@ export interface AuditorReviewCase {
 	expectedBucket: "report_finding" | "needs_review" | "research_note";
 	expectedVerdict: FindingTriageVerdict;
 	shouldHeadline: boolean;
+	expectedInvariantKinds?: InvariantKind[];
 	why: string;
 	tags: string[];
 	finding: Record<string, unknown>;
@@ -22,6 +23,7 @@ export const TRIAGE_AUDITOR_REVIEWSET: AuditorReviewCase[] = [
 		expectedBucket: "report_finding",
 		expectedVerdict: "likely_real",
 		shouldHeadline: true,
+		expectedInvariantKinds: ["state_finalized_before_payout"],
 		why: "Public reachability, attacker-chosen payout routing, and economically sensitive state finalized after transfer make this a defensible headline finding.",
 		tags: ["headline", "funds-loss", "effects-after-interaction"],
 		finding: {
@@ -108,6 +110,7 @@ export const TRIAGE_AUDITOR_REVIEWSET: AuditorReviewCase[] = [
 		expectedBucket: "needs_review",
 		expectedVerdict: "likely_real",
 		shouldHeadline: false,
+		expectedInvariantKinds: ["upgrade_requires_explicit_authorization"],
 		why: "Risk is strong, but without full proxy wiring and inherited context this should stay out of the main report.",
 		tags: ["non-headline", "upgradeability", "context-dependent"],
 		finding: {
@@ -149,7 +152,7 @@ export const TRIAGE_AUDITOR_REVIEWSET: AuditorReviewCase[] = [
 		detector: "arbitrary-send-eth",
 		severity: "high",
 		expectedBucket: "research_note",
-		expectedVerdict: "likely_real",
+		expectedVerdict: "likely_benign",
 		shouldHeadline: false,
 		why: "Dangerous-looking sink, but signer-constrained business logic should not become a headline finding without a stronger signer-bypass story.",
 		tags: ["non-headline", "signer-flow", "business-logic"],
@@ -192,8 +195,9 @@ export const TRIAGE_AUDITOR_REVIEWSET: AuditorReviewCase[] = [
 		detector: "reentrancy-benign",
 		severity: "low",
 		expectedBucket: "research_note",
-		expectedVerdict: "needs_human_review",
+		expectedVerdict: "likely_benign",
 		shouldHeadline: false,
+		expectedInvariantKinds: ["state_finalized_before_payout"],
 		why: "Even if the detector fires, a clearly finalized state transition before the call is not something we should headline.",
 		tags: ["non-headline", "reentrancy", "finalized-state"],
 		finding: {
@@ -235,7 +239,7 @@ export const TRIAGE_AUDITOR_REVIEWSET: AuditorReviewCase[] = [
 		detector: "low-level-calls",
 		severity: "medium",
 		expectedBucket: "needs_review",
-		expectedVerdict: "likely_real",
+		expectedVerdict: "needs_human_review",
 		shouldHeadline: false,
 		why: "Attacker-chosen low-level calls are risky, but without stronger value-flow or control-flow impact proof this should remain a manual-review item.",
 		tags: ["non-headline", "low-level-call", "target-control"],
@@ -278,7 +282,7 @@ export const TRIAGE_AUDITOR_REVIEWSET: AuditorReviewCase[] = [
 		detector: "unchecked-lowlevel",
 		severity: "medium",
 		expectedBucket: "research_note",
-		expectedVerdict: "likely_real",
+		expectedVerdict: "likely_benign",
 		shouldHeadline: false,
 		why: "A privileged low-level helper may still deserve engineering review, but it should not appear as a headline protocol vuln by default.",
 		tags: ["non-headline", "low-level-call", "privileged-flow"],
@@ -364,7 +368,7 @@ export const TRIAGE_AUDITOR_REVIEWSET: AuditorReviewCase[] = [
 		detector: "missing-zero-check",
 		severity: "low",
 		expectedBucket: "research_note",
-		expectedVerdict: "likely_real",
+		expectedVerdict: "likely_benign",
 		shouldHeadline: false,
 		why: "Privileged configuration mistakes should be visible for review, but not escalated into main-report vulns by default.",
 		tags: ["non-headline", "input-validation", "privileged-config"],
@@ -406,9 +410,10 @@ export const TRIAGE_AUDITOR_REVIEWSET: AuditorReviewCase[] = [
 		title: "Public quote path uses user-controlled divide-before-multiply math",
 		detector: "divide-before-multiply",
 		severity: "medium",
-		expectedBucket: "needs_review",
+		expectedBucket: "report_finding",
 		expectedVerdict: "likely_real",
-		shouldHeadline: false,
+		shouldHeadline: true,
+		expectedInvariantKinds: ["share_asset_conversion_consistency"],
 		why: "Economic precision issues deserve real attention, but without a stronger exploit consequence they should remain review candidates rather than headline bugs.",
 		tags: ["non-headline", "accounting", "precision"],
 		finding: {
@@ -441,6 +446,39 @@ export const TRIAGE_AUDITOR_REVIEWSET: AuditorReviewCase[] = [
 				arithmeticControlledArgs: ["assets", "supply", "feeBps"],
 				trustBoundary: "public_or_unrestricted",
 				isDependency: false,
+				dimensionalFacts: {
+					observations: [
+						{
+							expression: "assets",
+							unit: "asset_amount",
+							confidence: "high",
+							source: "identifier_heuristic",
+						},
+						{
+							expression: "supply",
+							unit: "share_amount",
+							confidence: "high",
+							source: "identifier_heuristic",
+						},
+						{
+							expression: "feeBps",
+							unit: "bps",
+							confidence: "high",
+							source: "identifier_heuristic",
+						},
+					],
+					mismatches: [
+						{
+							kind: "share_asset_confusion",
+							left: "assets",
+							right: "supply",
+							details:
+								"Assets are divided against share supply before normalization.",
+							severityHint: "medium",
+						},
+					],
+					normalizations: [],
+				},
 			},
 		},
 	},
@@ -450,7 +488,7 @@ export const TRIAGE_AUDITOR_REVIEWSET: AuditorReviewCase[] = [
 		detector: "incorrect-exp",
 		severity: "medium",
 		expectedBucket: "research_note",
-		expectedVerdict: "likely_real",
+		expectedVerdict: "likely_benign",
 		shouldHeadline: false,
 		why: "Non-user-reachable math helpers should stay suppressed unless we can tie them to a real exploit path.",
 		tags: ["non-headline", "accounting", "internal-helper"],

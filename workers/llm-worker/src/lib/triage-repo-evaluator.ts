@@ -1,6 +1,7 @@
 import {
+	applyDeterministicFindingTriages,
 	getFindingBucket,
-	mergeFindingTriages,
+	getEffectiveInvariantKinds,
 	type FindingTriageVerdict,
 	type FindingWithTriage,
 } from "./finding-triage";
@@ -15,8 +16,11 @@ export interface RepoBenchmarkRow {
 	actualBucket: RepoBenchmarkExpectation["expectedBucket"];
 	expectedVerdict: FindingTriageVerdict;
 	actualVerdict: FindingTriageVerdict;
+	expectedInvariantKinds: RepoBenchmarkExpectation["expectedInvariantKinds"];
+	actualInvariantKinds: string[];
 	bucketMatched: boolean;
 	verdictMatched: boolean;
+	invariantMatched: boolean;
 }
 
 export interface RepoBenchmarkSummary {
@@ -24,25 +28,15 @@ export interface RepoBenchmarkSummary {
 	total: number;
 	bucketAccuracy: number;
 	verdictAccuracy: number;
+	invariantAccuracy: number;
 	rows: RepoBenchmarkRow[];
 }
 
 export function evaluateRepoBenchmark(
 	fixture: RepoBenchmarkFixture,
 ): RepoBenchmarkSummary {
-	const triageMap = new Map(
-		fixture.expectations.map((item) => [
-			item.id,
-			{
-				verdict: item.expectedVerdict,
-				confidence: 90,
-			},
-		]),
-	);
-
-	const triaged = mergeFindingTriages(
+	const triaged = applyDeterministicFindingTriages(
 		fixture.findings as FindingWithTriage[],
-		triageMap,
 	);
 
 	const triagedById = new Map(triaged.map((finding) => [finding.id, finding]));
@@ -52,6 +46,10 @@ export function evaluateRepoBenchmark(
 			? getFindingBucket(finding)
 			: ("research_note" as const);
 		const actualVerdict = finding?.triage?.verdict || "untriaged";
+		const expectedInvariantKinds = expectation.expectedInvariantKinds || [];
+		const actualInvariantKinds = finding
+			? getEffectiveInvariantKinds(finding)
+			: [];
 
 		return {
 			id: expectation.id,
@@ -59,14 +57,20 @@ export function evaluateRepoBenchmark(
 			actualBucket,
 			expectedVerdict: expectation.expectedVerdict,
 			actualVerdict,
+			expectedInvariantKinds,
+			actualInvariantKinds,
 			bucketMatched: actualBucket === expectation.expectedBucket,
 			verdictMatched: actualVerdict === expectation.expectedVerdict,
+			invariantMatched: expectedInvariantKinds.every((kind) =>
+				actualInvariantKinds.includes(kind),
+			),
 		};
 	});
 
 	const total = rows.length;
 	const matchedBuckets = rows.filter((row) => row.bucketMatched).length;
 	const matchedVerdicts = rows.filter((row) => row.verdictMatched).length;
+	const matchedInvariants = rows.filter((row) => row.invariantMatched).length;
 
 	return {
 		fixtureId: fixture.id,
@@ -75,6 +79,8 @@ export function evaluateRepoBenchmark(
 			total === 0 ? 0 : Number((matchedBuckets / total).toFixed(3)),
 		verdictAccuracy:
 			total === 0 ? 0 : Number((matchedVerdicts / total).toFixed(3)),
+		invariantAccuracy:
+			total === 0 ? 0 : Number((matchedInvariants / total).toFixed(3)),
 		rows,
 	};
 }

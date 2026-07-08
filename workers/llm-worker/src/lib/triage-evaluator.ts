@@ -1,10 +1,11 @@
-import type { FindingTriageVerdict } from "./finding-triage";
+import type { FindingTriageVerdict, InvariantKind } from "./finding-triage";
 import type { GoldSetFindingCase } from "./triage-goldset";
 
 export interface GoldSetPrediction {
 	id: string;
 	verdict: FindingTriageVerdict;
 	confidence?: number;
+	invariantKinds?: InvariantKind[];
 }
 
 export interface TriageEvaluationRow {
@@ -13,8 +14,11 @@ export interface TriageEvaluationRow {
 	tags: string[];
 	expected: FindingTriageVerdict;
 	actual: FindingTriageVerdict;
+	expectedInvariantKinds: InvariantKind[];
+	actualInvariantKinds: InvariantKind[];
 	score: number;
 	passed: boolean;
+	invariantMatched: boolean;
 }
 
 export interface TriageEvaluationBucketSummary {
@@ -22,6 +26,7 @@ export interface TriageEvaluationBucketSummary {
 	passed: number;
 	averageScore: number;
 	verdictAccuracy: number;
+	invariantAccuracy: number;
 }
 
 export interface TriageEvaluationSummary {
@@ -29,6 +34,7 @@ export interface TriageEvaluationSummary {
 	passed: number;
 	averageScore: number;
 	verdictAccuracy: number;
+	invariantAccuracy: number;
 	confusion: Record<FindingTriageVerdict, Record<FindingTriageVerdict, number>>;
 	byDetector: Record<string, TriageEvaluationBucketSummary>;
 	byTag: Record<string, TriageEvaluationBucketSummary>;
@@ -60,6 +66,7 @@ function summarizeRows(rows: TriageEvaluationRow[]): TriageEvaluationBucketSumma
 	const total = rows.length;
 	const passed = rows.filter((row) => row.passed).length;
 	const exactMatches = rows.filter((row) => row.expected === row.actual).length;
+	const exactInvariantMatches = rows.filter((row) => row.invariantMatched).length;
 	const totalScore = rows.reduce((sum, row) => sum + row.score, 0);
 
 	return {
@@ -68,6 +75,8 @@ function summarizeRows(rows: TriageEvaluationRow[]): TriageEvaluationBucketSumma
 		averageScore: total === 0 ? 0 : Number((totalScore / total).toFixed(3)),
 		verdictAccuracy:
 			total === 0 ? 0 : Number((exactMatches / total).toFixed(3)),
+		invariantAccuracy:
+			total === 0 ? 0 : Number((exactInvariantMatches / total).toFixed(3)),
 	};
 }
 
@@ -100,17 +109,25 @@ export function evaluateTriagePredictions(
 	const rowsByDetector = new Map<string, TriageEvaluationRow[]>();
 	const rowsByTag = new Map<string, TriageEvaluationRow[]>();
 	let exactMatches = 0;
+	let exactInvariantMatches = 0;
 	let totalScore = 0;
 
 	for (const example of goldSet) {
 		const actual =
 			predictionMap.get(example.id)?.verdict || ("untriaged" as FindingTriageVerdict);
+		const actualInvariantKinds =
+			predictionMap.get(example.id)?.invariantKinds || [];
+		const expectedInvariantKinds = example.expectedInvariantKinds || [];
 		const expected = example.expectedVerdict;
 		const score = scoreVerdictPair(expected, actual);
 		const passed = score >= 0.5;
+		const invariantMatched = expectedInvariantKinds.every((kind) =>
+			actualInvariantKinds.includes(kind),
+		);
 
 		confusion[expected][actual] += 1;
 		if (expected === actual) exactMatches += 1;
+		if (invariantMatched) exactInvariantMatches += 1;
 		totalScore += score;
 		rows.push({
 			id: example.id,
@@ -118,8 +135,11 @@ export function evaluateTriagePredictions(
 			tags: example.tags,
 			expected,
 			actual,
+			expectedInvariantKinds,
+			actualInvariantKinds,
 			score,
 			passed,
+			invariantMatched,
 		});
 
 		const detectorRows = rowsByDetector.get(example.detector) || [];
@@ -139,6 +159,8 @@ export function evaluateTriagePredictions(
 		passed: rows.filter((row) => row.passed).length,
 		averageScore: total === 0 ? 0 : Number((totalScore / total).toFixed(3)),
 		verdictAccuracy: total === 0 ? 0 : Number((exactMatches / total).toFixed(3)),
+		invariantAccuracy:
+			total === 0 ? 0 : Number((exactInvariantMatches / total).toFixed(3)),
 		confusion,
 		byDetector: Object.fromEntries(
 			Array.from(rowsByDetector.entries()).map(([detector, detectorRows]) => [

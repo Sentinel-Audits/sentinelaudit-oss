@@ -4,11 +4,15 @@ import logging
 import os
 import re
 import subprocess
+import time
 from typing import Dict, List, Optional, Set, Tuple
 
 from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
+
+FRAMEWORK_PREFLIGHT_TIMEOUT_SECONDS = 120
+FRAMEWORK_ANALYSIS_TIMEOUT_SECONDS = 240
 
 ANSI_ESCAPE_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
 TSCONFIG_MODULE_RE = re.compile(r'("module"\s*:\s*")([^"]+)(")', re.I)
@@ -234,22 +238,37 @@ def run_crytic_compile_preflight(cwd: str, framework: str) -> None:
         normalize_hardhat_tsconfig_modules(cwd)
     cmd = ["crytic-compile", ".", "--compile-force-framework", framework]
     logger.info(f"Running crytic-compile preflight: {' '.join(cmd)}")
+    started_at = time.monotonic()
     try:
         result = subprocess.run(
             cmd,
             cwd=cwd,
             capture_output=True,
             text=True,
-            timeout=600,
+            timeout=FRAMEWORK_PREFLIGHT_TIMEOUT_SECONDS,
         )
     except subprocess.TimeoutExpired:
+        elapsed = time.monotonic() - started_at
+        logger.error(
+            "crytic-compile preflight timed out for %s after %.1fs",
+            framework,
+            elapsed,
+        )
         _raise_framework_error(
             504,
             "CRYTIC_COMPILE_TIMEOUT",
             f"{framework} compilation timed out",
             "",
-            "The project compile step exceeded the 10 minute limit.",
+            f"The project compile step exceeded the {FRAMEWORK_PREFLIGHT_TIMEOUT_SECONDS}-second framework preflight limit.",
         )
+
+    elapsed = time.monotonic() - started_at
+    logger.info(
+        "crytic-compile preflight finished for %s in %.1fs with exit code %s",
+        framework,
+        elapsed,
+        result.returncode,
+    )
 
     if result.returncode != 0:
         details = result.stderr or result.stdout or ""
@@ -283,15 +302,22 @@ def run_slither_sync_with_framework(cwd: str, framework: str) -> dict:
         framework,
     ]
     logger.info(f"Slither framework command: {' '.join(cmd)}")
+    started_at = time.monotonic()
     try:
         result = subprocess.run(
             cmd,
             cwd=cwd,
             capture_output=True,
             text=True,
-            timeout=900,
+            timeout=FRAMEWORK_ANALYSIS_TIMEOUT_SECONDS,
         )
     except subprocess.TimeoutExpired:
+        elapsed = time.monotonic() - started_at
+        logger.error(
+            "slither framework analysis timed out for %s after %.1fs",
+            framework,
+            elapsed,
+        )
         _raise_framework_error(
             504,
             "SLITHER_TIMEOUT",
@@ -299,6 +325,14 @@ def run_slither_sync_with_framework(cwd: str, framework: str) -> dict:
             "",
             "The project may be too large or the framework compile step is hanging.",
         )
+
+    elapsed = time.monotonic() - started_at
+    logger.info(
+        "slither framework command finished for %s in %.1fs with exit code %s",
+        framework,
+        elapsed,
+        result.returncode,
+    )
 
     if result.returncode != 0 and not os.path.exists(slither_json_path):
         err = result.stderr or result.stdout or ""

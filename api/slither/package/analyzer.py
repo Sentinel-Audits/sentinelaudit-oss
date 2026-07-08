@@ -37,6 +37,7 @@ from analyzer_packages import (
     infer_imported_packages as package_infer_imported_packages,
     install_dependencies as package_install_dependencies,
     install_from_package_json as package_install_from_package_json,
+    install_required_peer_dependencies as package_install_required_peer_dependencies,
     parse_workspace_remappings_from_files as package_parse_workspace_remappings_from_files,
     setup_import_paths as package_setup_import_paths,
 )
@@ -51,6 +52,108 @@ PRAGMA_RE = re.compile(r"pragma\s+solidity\s+([^;]+);")
 IMPORT_RE = re.compile(r'import\s+(?:[^"\']*\s+from\s+)?["\']([^"\']+)["\']')
 REMAPPING_ENTRY_RE = re.compile(r'["\']([^"\']+?)=([^"\']+)["\']')
 ALIAS_TOKEN_RE = re.compile(r"[a-z0-9]+", re.I)
+
+# Detectors excluded by default — pure style / noise that overwhelms the
+# downstream LLM structurer without contributing useful signal. Override via
+# SLITHER_EXCLUDE_DETECTORS env var (comma-separated, empty = include all).
+DEFAULT_EXCLUDED_DETECTORS = [
+    "naming-convention",        # camelCase/snake_case style nags
+    "pragma",                   # pragma format/version (we manage solc anyway)
+    "solc-version",             # outdated solc warning (we pin versions)
+    "low-level-calls",          # every safe library uses these intentionally
+    "assembly",                 # OZ / Solady / etc all use asm; not a bug per se
+    "cyclomatic-complexity",    # style metric, not a vulnerability
+    "external-function",        # public-could-be-external style nag
+    "dead-code",                # frequently false-positive on libraries
+    "similar-names",            # variable naming style
+    "constable-states",         # could-be-constant nag
+    "immutable-states",         # could-be-immutable nag
+    "missing-inheritance",      # interface conformance hint
+]
+
+
+def _resolve_excluded_detectors() -> List[str]:
+    raw = os.environ.get("SLITHER_EXCLUDE_DETECTORS")
+    if raw is None:
+        return DEFAULT_EXCLUDED_DETECTORS
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    return parts
+
+
+def _extract_detectors(raw_result: dict) -> List[dict]:
+    """Slither's JSON has two shapes depending on version: top-level `detectors`
+    or nested under `results.detectors`. Handle both."""
+    if isinstance(raw_result.get("results"), dict):
+        nested = raw_result["results"].get("detectors")
+        if isinstance(nested, list):
+            return nested
+    direct = raw_result.get("detectors")
+    if isinstance(direct, list):
+        return direct
+    return []
+
+
+def _detector_dedup_key(detector: dict) -> Tuple[str, Tuple[Tuple[str, int], ...]]:
+    """
+    Build a stable dedup key for a Slither finding.
+
+    Key components:
+      - `check`: detector name (e.g. "reentrancy-eth")
+      - sorted tuple of `(filename_relative, first_line)` for every element
+
+    Rationale: the same vulnerability in a shared library imported by N
+    entrypoints produces N copies of the same finding, all pointing at the
+    same source location. We treat them as one.
+    """
+    check = str(detector.get("check", "")).strip().lower()
+    locations: List[Tuple[str, int]] = []
+    for element in detector.get("elements", []) or []:
+        source_mapping = element.get("source_mapping") or {}
+        filename = (
+            source_mapping.get("filename_relative")
+            or source_mapping.get("filename_short")
+            or source_mapping.get("filename_absolute")
+            or ""
+        )
+        lines = source_mapping.get("lines") or []
+        first_line = int(lines[0]) if lines else 0
+        if filename:
+            locations.append((str(filename), first_line))
+    locations_sorted = tuple(sorted(locations))
+    return (check, locations_sorted)
+
+
+def dedupe_slither_detectors(results: List[dict]) -> List[dict]:
+    """
+    Flatten detectors across all per-entrypoint Slither results and remove
+    duplicates by (check, sorted element source locations).
+
+    Returns the deduplicated list of detector dicts. Preserves the first
+    occurrence (which already carries the full Slither metadata).
+    """
+    seen: Dict[Tuple[str, Tuple[Tuple[str, int], ...]], dict] = {}
+    duplicate_count = 0
+
+    for result in results:
+        if not isinstance(result, dict):
+            continue
+        for detector in _extract_detectors(result):
+            if not isinstance(detector, dict):
+                continue
+            key = _detector_dedup_key(detector)
+            if key in seen:
+                duplicate_count += 1
+                continue
+            seen[key] = detector
+
+    if duplicate_count:
+        logger.info(
+            "[DEDUP] Removed %d duplicate Slither findings (kept %d unique)",
+            duplicate_count,
+            len(seen),
+        )
+
+    return list(seen.values())
 
 
 def parse_workspace_remappings_from_files(files: List[FileIn]) -> Dict[str, str]:
@@ -630,6 +733,13 @@ install_from_package_json = (
         logger,
     )
 )
+install_required_peer_dependencies = (
+    lambda cwd, package_names: package_install_required_peer_dependencies(
+        cwd,
+        package_names,
+        logger,
+    )
+)
 build_remappings = package_build_remappings
 setup_import_paths = package_setup_import_paths
 
@@ -693,7 +803,13 @@ def run_slither_sync_with_remappings(
 
     if solc_binary:
         cmd.extend(["--solc", solc_binary])
-    
+
+    # Drop low-signal detectors so the downstream LLM structurer doesn't have to
+    # filter through style noise. See DEFAULT_EXCLUDED_DETECTORS at top of file.
+    excluded = _resolve_excluded_detectors()
+    if excluded:
+        cmd.extend(["--exclude", ",".join(excluded)])
+
     # Add remappings directly to slither command (not through solc-args)
     if remappings:
         # Use --solc-remaps for all versions (Slither will handle version differences)
